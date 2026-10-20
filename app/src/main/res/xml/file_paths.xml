@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 暴露 cache 目录下的 share_db 文件夹 -->
+    <cache-path name="share_db" path="share_db/" />
+</paths>

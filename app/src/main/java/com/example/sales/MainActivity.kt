@@ -40,6 +40,10 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.TextRange
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Share
+import java.util.Calendar
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -401,6 +405,9 @@ fun AddSaleBottomSheet(products: List<ProductEntity>, onDismiss: () -> Unit, onS
     }
 }
 
+
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(viewModel: SaleViewModel) {
@@ -410,12 +417,47 @@ fun StatsScreen(viewModel: SaleViewModel) {
 
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
+    var selectedStatsTab by remember { mutableIntStateOf(0) } // 默认停在"商品汇总"或"月汇总"
 
-    // 新增：记录当前选中的 Tab (0:月, 1:商品, 2:日)
-    var selectedStatsTab by remember { mutableIntStateOf(1) } // 默认停在"商品"，因为最常用
+    // 快捷获取日期的工具函数
+    val setQuickDate = { type: String ->
+        val cal = Calendar.getInstance()
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val end = sdf.format(cal.time) // 今天
+
+        when (type) {
+            "本月" -> {
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                viewModel.updateDateRange(sdf.format(cal.time), end)
+            }
+            "上月" -> {
+                cal.add(Calendar.MONTH, -1)
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                val start = sdf.format(cal.time)
+
+                cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
+                val lastEnd = sdf.format(cal.time)
+                viewModel.updateDateRange(start, lastEnd)
+            }
+            "今年" -> {
+                cal.set(Calendar.DAY_OF_YEAR, 1)
+                viewModel.updateDateRange(sdf.format(cal.time), end)
+            }
+            "去年同期" -> {
+                // 核心逻辑：年份减一，月份保持不变，取该月第一天和最后一天
+                cal.add(Calendar.YEAR, -1)
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                val start = sdf.format(cal.time)
+
+                cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
+                val lastEnd = sdf.format(cal.time)
+                viewModel.updateDateRange(start, lastEnd)
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(top = 16.dp)) {
-        // 1. 顶部时间选择器
+        // 1. 顶部：自定义日期选择
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -426,19 +468,28 @@ fun StatsScreen(viewModel: SaleViewModel) {
             OutlinedButton(onClick = { showEndPicker = true }) { Text(endDate) }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 2. 新增：M3 风格的 Tab 切换栏
-        TabRow(
-            selectedTabIndex = selectedStatsTab,
-            containerColor = MaterialTheme.colorScheme.background
+        // 2. 快捷筛选标签（带横向滑动功能）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()) // 允许横向滑动，防止按钮太多超出屏幕
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            FilterChip(selected = false, onClick = { setQuickDate("本月") }, label = { Text("本月") })
+            FilterChip(selected = false, onClick = { setQuickDate("上月") }, label = { Text("上月") })
+            FilterChip(selected = false, onClick = { setQuickDate("去年同期") }, label = { Text("去年同期") }) // 新增
+            FilterChip(selected = false, onClick = { setQuickDate("今年") }, label = { Text("今年") })
+        }
+
+        // 3. Tab 切换栏
+        TabRow(selectedTabIndex = selectedStatsTab, containerColor = MaterialTheme.colorScheme.background) {
             Tab(selected = selectedStatsTab == 0, onClick = { selectedStatsTab = 0 }, text = { Text("月汇总") })
             Tab(selected = selectedStatsTab == 1, onClick = { selectedStatsTab = 1 }, text = { Text("商品汇总") })
             Tab(selected = selectedStatsTab == 2, onClick = { selectedStatsTab = 2 }, text = { Text("日汇总") })
         }
 
-        // 3. 列表渲染区（根据选中的 Tab 动态变化）
+        // 4. 列表渲染区 (这里保留了你原来的渲染逻辑)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp, bottom = 100.dp)
@@ -482,7 +533,7 @@ fun StatsScreen(viewModel: SaleViewModel) {
         }
     }
 
-    // --- 日期选择器逻辑（保持你原来的不变）---
+    // --- 日期选择器逻辑（保持不变）---
     if (showStartPicker) {
         val datePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
         DatePickerDialog(
@@ -605,7 +656,19 @@ fun SettingsScreen() {
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(bottom = 12.dp)
         )
+        Spacer(modifier = Modifier.height(12.dp))
+        // 分享到微信
+        SettingsCard(
+            title = "分享数据库",
+            subtitle = "分享数据库到微信联系人，云盘等",
+            icon = Icons.Default.Share, // 如果你没引入 Share 图标，可以换成 Icons.Default.Save
+            onClick = {
+                BackupManager.shareDatabase(context)
+            }
+        )
 
+
+        Spacer(modifier = Modifier.height(12.dp))
         // 导出卡片
         SettingsCard(
             title = "备份数据库",
